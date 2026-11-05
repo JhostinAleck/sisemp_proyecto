@@ -12,7 +12,7 @@ Google Sheet STUNTS INVENTARIO UNIFICADO, pestaña UNIFICADO STUNTS (gid 1762675
 - Proyectos con fechas de rodaje, responsable, desglose de materiales y disponibilidad por periodo; reservas que impiden sobreasignar existencias en fechas coincidentes.
 - Actas de salida con proyecto, responsable, fecha prevista de retorno, líneas y checklist de preparación/carga. Se generan desde reservas, sin duplicar ni descontar el stock dos veces. Requieren fechas válidas y cantidades enteras positivas.
 - Devoluciones parciales por línea: cantidad recibida en buen estado o con novedad, observación obligatoria para daños. Nunca devolver más de lo pendiente. Daños pasan a revisión y no están disponibles hasta resolverlos. Las unidades pendientes siguen fuera, incluso después de la fecha prevista.
-- Mantener solicitud de cotización, proveedores, registro manual de ofertas, comparación y aprobación. No afirmar envío real de correos ni integración Siigo. Impedir aprobar faltantes sin cobertura y cambios silenciosos de una cotización aprobada.
+- Mantener solicitud de cotización, proveedores, registro manual de ofertas, comparación y aprobación. No afirmar envío real de correos ni integración Siigo. Impedir aprobar faltantes sin cobertura y cambios silenciosos de una cotización aprobada. Cobertura significa: cada cantidad faltante según disponibilidad por fechas debe tener una oferta vigente seleccionada, disponible y para la cantidad solicitada; aprobar cotización no registra una recepción ni incrementa stock. Reservar solo las unidades propias disponibles. La compra/recepción física queda separada.
 - Historial de actividad y matriz de roles visibles. Exportar actas mediante impresión/PDF del navegador.
 
 ## Roles y límites explícitos
