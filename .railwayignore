@@ -1,0 +1,9 @@
+.git
+node_modules
+dist
+.env*
+.secrets
+.superpowers
+.vercel
+test-results
+playwright-report

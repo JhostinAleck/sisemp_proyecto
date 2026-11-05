@@ -5,7 +5,8 @@ export interface InventoryItem { id: string; code: string; name: string; categor
 export interface EffectLine { id: string; scene: string; effect: string; itemId: string; qty: number }
 export interface RfqLine { itemId: string; qty: number; rental: boolean }
 export interface Rfq { lines: RfqLine[]; specs: string; supplierIds: string[]; deadline: string; sentAt: string }
-export interface Project { id: string; name: string; client: string; responsible: string; location: string; start: string; end: string; status: ProjectStatus; comments: string; effects: EffectLine[]; rfq?: Rfq; choices: Record<string,string>; costs: { personal: number; polizas: number; margin: number }; createdAt: string }
+export interface QuoteSnapshot { days:number; ownLines:{itemId:string;name:string;qty:number;dailyRate:number}[]; supplierLines:{itemId:string;name:string;supplierId:string;supplierName:string;qty:number;price:number}[]; totals:{inventory:number;suppliers:number;personal:number;polizas:number;subtotal:number;margin:number;total:number}; approvedAt:string; approvedBy:string }
+export interface Project { id: string; name: string; client: string; responsible: string; location: string; start: string; end: string; status: ProjectStatus; comments: string; effects: EffectLine[]; rfq?: Rfq; quoteSnapshot?: QuoteSnapshot; choices: Record<string,string>; costs: { personal: number; polizas: number; margin: number }; createdAt: string }
 export interface Reservation { id: string; projectId: string; itemId: string; qty: number; dispatchedQty: number; from: string; to: string }
 export interface DispatchLine { itemId: string; qty: number; returnedQty: number; damagedQty: number }
 export interface Dispatch { id: string; code: string; projectId: string; responsible: string; dueDate: string; date: string; actor: string; notes: string; prepared: boolean; loaded: boolean; lines: DispatchLine[] }

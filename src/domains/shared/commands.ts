@@ -1,10 +1,11 @@
 import type {Workspace,User,Command,Movement,InventoryItem} from './types';
 import {can,type Permission} from '../access/policy';
 import {ensure} from './errors';
+import {businessDate} from './format';
 import {commandSchema} from './validation';
 import {inventoryCheck,stockSummary,reservedPeak,outQuantity} from '../inventory/service';
-import {editableProject,findProject,readyProject} from '../projects/service';
-import {requireCoverage} from '../procurement/service';
+import {editableProject,findProject,readyProject,invalidateRequirements} from '../projects/service';
+import {requireCoverage,captureQuote} from '../procurement/service';
 interface Context {now:string;id:()=>string}
 const permissions:Record<Command['type'],Permission>={
  'project.create':'projects.write','project.update':'projects.write','project.delete':'quotes.approve','effect.add':'projects.write','effect.update':'projects.write','effect.remove':'projects.write',
@@ -14,18 +15,18 @@ const permissions:Record<Command['type'],Permission>={
 };
 export function applyCommand(original:Workspace,user:User,input:Command,ctx:Context={now:new Date().toISOString(),id:()=>crypto.randomUUID()}):{state:Workspace;summary:string;entityId:string}{
  const c=commandSchema.parse(input) as Command;ensure(user.active&&can(user.role,permissions[c.type]),'Tu perfil no tiene permiso para realizar esta operación',403);
- const s=structuredClone(original);const today=ctx.now.slice(0,10);let summary='',entityId='';
+ const s=structuredClone(original);const today=businessDate(ctx.now);let summary='',entityId='';
  const item=(id:string):InventoryItem=>{const i=s.inventory.find(x=>x.id===id);ensure(i,'No se encontró el artículo',404);return i;};
  const distinct=(ids:string[])=>ensure(new Set(ids).size===ids.length,'No repitas artículos en la misma operación');
  const move=(m:Omit<Movement,'id'|'actor'|'date'>)=>s.movements.push({...m,id:ctx.id(),actor:user.name,date:ctx.now});
  const reserve=(projectId:string,itemIds:string[])=>{const p=findProject(s,projectId);readyProject(p);distinct(itemIds);for(const iid of itemIds){const r=inventoryCheck(s,p).find(x=>x.item.id===iid);ensure(r,'Selecciona un material del desglose');const existing=s.reservations.find(x=>x.projectId===projectId&&x.itemId===iid);const qty=Math.min(r.required,r.free);if(existing?.qty===qty)continue;ensure(!existing?.dispatchedQty,'Este artículo ya tiene una salida; no se puede volver a reservar');ensure(qty>0,`No hay unidades disponibles de ${r.item.name}`);s.reservations=s.reservations.filter(x=>x.projectId!==projectId||x.itemId!==iid);s.reservations.push({id:ctx.id(),projectId,itemId:iid,qty,dispatchedQty:0,from:p.start,to:p.end});move({itemId:iid,projectId,kind:'reserva',qty,label:`Reserva · ${p.name}`,notes:''});}};
  switch(c.type){
  case 'project.create':{entityId=ctx.id();s.projects.unshift({...c.input,id:entityId,status:'nuevo',effects:[],choices:{},costs:{personal:0,polizas:0,margin:0},createdAt:ctx.now});summary='Proyecto creado';break;}
- case 'project.update':{const p=editableProject(s,c.id);if(p.start!==c.input.start||p.end!==c.input.end)editableProject(s,c.id,true);Object.assign(p,c.input);entityId=p.id;summary='Proyecto actualizado';break;}
+ case 'project.update':{const p=editableProject(s,c.id);if(p.start!==c.input.start||p.end!==c.input.end){editableProject(s,c.id,true);invalidateRequirements(s,p);}Object.assign(p,c.input);entityId=p.id;summary='Proyecto actualizado';break;}
  case 'project.delete':{const p=findProject(s,c.id);ensure(!s.dispatches.some(d=>d.projectId===p.id),'Este proyecto tiene actas de salida y debe conservar su historial');s.projects=s.projects.filter(x=>x.id!==p.id);s.reservations=s.reservations.filter(x=>x.projectId!==p.id);s.offers=s.offers.filter(x=>x.projectId!==p.id);entityId=p.id;summary=`Proyecto eliminado · ${p.name}`;break;}
- case 'effect.add':{const p=editableProject(s,c.projectId,true);item(c.input.itemId);p.effects.push({...c.input,id:ctx.id()});entityId=p.id;summary='Material agregado al desglose';break;}
- case 'effect.update':{const p=editableProject(s,c.projectId,true),e=p.effects.find(x=>x.id===c.id);ensure(e,'No se encontró el material',404);e.qty=c.qty;entityId=p.id;summary='Cantidad del desglose actualizada';break;}
- case 'effect.remove':{const p=editableProject(s,c.projectId,true);ensure(p.effects.some(e=>e.id===c.id),'No se encontró el material',404);p.effects=p.effects.filter(x=>x.id!==c.id);entityId=p.id;summary='Material retirado del desglose';break;}
+ case 'effect.add':{const p=editableProject(s,c.projectId,true);item(c.input.itemId);invalidateRequirements(s,p);p.effects.push({...c.input,id:ctx.id()});entityId=p.id;summary='Material agregado al desglose';break;}
+ case 'effect.update':{const p=editableProject(s,c.projectId,true),e=p.effects.find(x=>x.id===c.id);ensure(e,'No se encontró el material',404);e.qty=c.qty;invalidateRequirements(s,p);entityId=p.id;summary='Cantidad del desglose actualizada';break;}
+ case 'effect.remove':{const p=editableProject(s,c.projectId,true);ensure(p.effects.some(e=>e.id===c.id),'No se encontró el material',404);p.effects=p.effects.filter(x=>x.id!==c.id);invalidateRequirements(s,p);entityId=p.id;summary='Material retirado del desglose';break;}
  case 'inventory.create':{ensure(!s.inventory.some(i=>i.code.toLowerCase()===c.input.code.toLowerCase()),'Ya existe un artículo con este código');ensure(c.input.maintenanceQty<=c.input.qty,'La cantidad en revisión supera las existencias');entityId=ctx.id();s.inventory.unshift({...c.input,id:entityId});move({itemId:entityId,kind:'ingreso',qty:c.input.qty,label:'Alta de artículo',notes:c.input.notes});summary='Artículo creado';break;}
  case 'inventory.update':{const i=item(c.id);ensure(!s.inventory.some(x=>x.id!==i.id&&x.code.toLowerCase()===c.input.code.toLowerCase()),'Ya existe un artículo con este código');Object.assign(i,c.input);entityId=i.id;summary='Ficha de artículo actualizada';break;}
  case 'inventory.receive':{const i=item(c.itemId);ensure(i.qty+c.qty<=1000000,'La cantidad supera el límite');i.qty+=c.qty;move({itemId:i.id,kind:'ingreso',qty:c.qty,label:'Ingreso a bodega',notes:c.notes});entityId=i.id;summary='Ingreso registrado';break;}
@@ -40,9 +41,9 @@ export function applyCommand(original:Workspace,user:User,input:Command,ctx:Cont
  case 'offer.save':{const p=editableProject(s,c.input.projectId),line=p.rfq?.lines.find(l=>l.itemId===c.input.itemId);ensure(line&&p.rfq?.supplierIds.includes(c.input.supplierId),'La oferta debe responder a una solicitud vigente');ensure(line.qty===c.input.qty,'La oferta debe cubrir la cantidad solicitada');const existing=s.offers.find(o=>o.projectId===p.id&&o.supplierId===c.input.supplierId&&o.itemId===c.input.itemId);if(c.id)ensure(existing?.id===c.id,'No se encontró la oferta',404);entityId=existing?.id||ctx.id();if(existing)Object.assign(existing,c.input);else s.offers.push({id:entityId,...c.input});summary='Oferta registrada manualmente';break;}
  case 'offer.choose':{const p=editableProject(s,c.projectId),o=s.offers.find(x=>x.projectId===p.id&&x.itemId===c.itemId&&x.supplierId===c.supplierId);ensure(o?.available&&p.rfq?.supplierIds.includes(c.supplierId),'Selecciona una oferta disponible de la solicitud vigente');p.choices[c.itemId]=c.supplierId;entityId=p.id;summary='Oferta seleccionada';break;}
  case 'quote.costs':{const p=editableProject(s,c.projectId);p.costs=c.costs;entityId=p.id;summary='Costos actualizados';break;}
- case 'quote.submit':{const p=editableProject(s,c.projectId);readyProject(p);requireCoverage(s,p,today);p.status='enviado';entityId=p.id;summary='Cotización enviada a revisión de Gerencia';break;}
- case 'quote.approve':{const p=findProject(s,c.projectId);ensure(p.status==='enviado','Solo se pueden aprobar cotizaciones enviadas a revisión');readyProject(p);requireCoverage(s,p,today);const ids=inventoryCheck(s,p).filter(r=>r.free>0).map(r=>r.item.id);if(ids.length)reserve(p.id,ids);p.status='aprobado';entityId=p.id;summary='Cotización aprobada; inventario propio reservado. Las compras se reciben por separado.';break;}
- case 'quote.reject':{const p=findProject(s,c.projectId);ensure(p.status==='enviado','Solo se pueden rechazar cotizaciones enviadas a revisión');p.status='rechazado';p.comments=`${p.comments}\nRechazo de Gerencia: ${c.notes}`.trim();entityId=p.id;summary='Cotización rechazada con observación';break;}
+ case 'quote.submit':{const p=editableProject(s,c.projectId);readyProject(p);requireCoverage(s,p,today);p.quoteSnapshot=captureQuote(s,p);p.status='enviado';entityId=p.id;summary='Cotización enviada a revisión de Gerencia';break;}
+ case 'quote.approve':{const p=findProject(s,c.projectId);ensure(p.status==='enviado','Solo se pueden aprobar cotizaciones enviadas a revisión');readyProject(p);requireCoverage(s,p,today);const ids=inventoryCheck(s,p).filter(r=>r.free>0).map(r=>r.item.id);if(ids.length)reserve(p.id,ids);p.quoteSnapshot=p.quoteSnapshot||captureQuote(s,p);p.quoteSnapshot.approvedAt=ctx.now;p.quoteSnapshot.approvedBy=user.name;p.status='aprobado';entityId=p.id;summary='Cotización aprobada; inventario propio reservado. Las compras se reciben por separado.';break;}
+ case 'quote.reject':{const p=findProject(s,c.projectId);ensure(p.status==='enviado','Solo se pueden rechazar cotizaciones enviadas a revisión');p.status='rechazado';delete p.quoteSnapshot;p.comments=`${p.comments}\nRechazo de Gerencia: ${c.notes}`.trim();entityId=p.id;summary='Cotización rechazada con observación';break;}
  }
  for(const i of s.inventory){ensure(Number.isSafeInteger(i.qty)&&i.qty>=0&&i.qty<=1000000,'Existencias inválidas');ensure(i.maintenanceQty>=0&&i.maintenanceQty+outQuantity(s,i.id)<=i.qty,'La operación dejaría existencias físicas negativas');}
  return {state:s,summary,entityId};
