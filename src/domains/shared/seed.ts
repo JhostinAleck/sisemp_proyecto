@@ -1,13 +1,228 @@
-import type {InventoryItem,Project,Workspace} from './types';
+import type { InventoryItem, Project, Workspace } from "./types";
 /** Representative catalogue from STUNTS INVENTARIO UNIFICADO. All rates, operations and projects below are illustrative. No live synchronization. */
-export function seedWorkspace():Workspace{
- const row=(code:string,name:string,category:string,qty:number,location:string,extra:Partial<InventoryItem>={}):InventoryItem=>({id:code,code,name,category,qty,location,brand:'',size:'',notes:'Muestra del catálogo STUNTS; saldo operativo de demostración.',maintenanceQty:0,minQty:1,dailyRate:0,...extra});
- const inventory=[
- row('S00001','Riata en rollo','Herramientas',2,'Armario 2'),row('S00011','Brocha','Herramientas',1,'Armario 2'),row('S00013','Cámara fotográfica con accesorios','Audiovisual',5,'G-6',{brand:'Nikon',notes:'El catálogo indica falta de tarjeta SD. Verificar accesorios al entregar.',maintenanceQty:1}),row('S00015','Correa de tapete grande','Herramientas',2,'Armario 2',{brand:'Dollamur'}),row('S00020','Amarre plástico 4,8 × 450','Herramientas',22,'Armario 2'),row('S00026','Rollo de cinta gaffer','Herramientas',1,'Armario 2'),row('S00029','Straps','Rigging',10,'Armario 2'),row('S00032','Destornillador inalámbrico','Herramientas',1,'Armario 2',{brand:'Black & Decker'}),row('S00033','Candados con clave','Herramientas',6,'Armario 2'),row('S00084','Galones de gel frío','Protecciones',5,'C-4'),row('S00085','Espaldera rígida S','Protecciones',2,'E-2',{size:'S'}),row('S00086','Espaldera rígida M','Protecciones',5,'E-2',{size:'M',brand:'Sulaite'}),row('S00087','Espaldera rígida L','Protecciones',2,'E-2',{size:'L',brand:'Sulaite'}),row('S00093','Rodillera rígida','Protecciones',12,'B-2'),row('S00100','Codera pendiente de revisión','Protecciones',2,'C-2',{maintenanceQty:2,notes:'El catálogo indica una pieza rota/sin pareja. Mantener en revisión hasta verificar.'}),row('S00103','Codera rígida','Protecciones',18,'C-2'),row('S00104','Rodillera Bionic Plus S–M','Protecciones',2,'B-2',{brand:'Alpinestars',size:'S–M'}),row('S00106','Pantalón de choque','Protecciones',1,'C-3',{brand:'Bodyprox',size:'M'}),row('S00107','Kit de protecciones rígidas S','Protecciones',2,'C-2',{brand:'Oxelo',size:'S'}),row('S00110','Kit de protecciones rígidas XL','Protecciones',0,'C-2',{brand:'Oxelo',size:'XL'}),row('S00114','Guantes de entrenamiento','Protecciones',1,'C-3',{brand:'Everlast'}),row('S00115','Focos de pateo','Protecciones',1,'Zona de entrenamiento',{brand:'FIT'}),
- ];
- const base=(id:string,name:string,client:string,location:string,start:string,end:string):Project=>({id,name,client,responsible:'Supervisor de stunts',location,start,end,status:'nuevo',comments:'Proyecto de demostración para validar el recorrido con el equipo.',effects:[],choices:{},costs:{personal:0,polizas:0,margin:0},createdAt:'2026-11-05T12:00:00Z'});
- const a=base('rodaje-demo','La última toma','Productora Horizonte · ejemplo','Bogotá','2026-11-09','2026-11-11');
- a.effects=[{id:'fx1',scene:'12',effect:'Caída controlada',itemId:'S00086',qty:3},{id:'fx2',scene:'12',effect:'Caída controlada',itemId:'S00093',qty:6},{id:'fx3',scene:'18',effect:'Rigging',itemId:'S00029',qty:4},{id:'fx4',scene:'18',effect:'Preparación de set',itemId:'S00020',qty:10},{id:'fx5',scene:'22',effect:'Protección individual',itemId:'S00110',qty:2}];
- const b=base('comercial-demo','En movimiento','Agencia Norte · ejemplo','Medellín','2026-11-10','2026-11-12');b.status='cotizacion';b.effects=[{id:'fx6',scene:'4',effect:'Acción',itemId:'S00086',qty:4},{id:'fx7',scene:'4',effect:'Acción',itemId:'S00093',qty:4}];
- return {inventory,projects:[a,b],reservations:[{id:'res-demo-1',projectId:b.id,itemId:'S00086',qty:4,dispatchedQty:0,from:b.start,to:b.end}],dispatches:[],movements:[{id:'mov-demo-1',itemId:'S00086',projectId:b.id,kind:'reserva',qty:4,label:'Reserva · En movimiento',actor:'Datos de demostración',date:'2026-11-05T12:00:00Z',notes:'Escenario ilustrativo de conflicto de fechas.'}],suppliers:[{id:'proveedor-demo-1',name:'Rigging y Protección · ejemplo',category:'Protecciones',email:'',phone:'',notes:'Proveedor de demostración. Registra los proveedores reales desde Compras.'},{id:'proveedor-demo-2',name:'Equipos de Escena · ejemplo',category:'Rigging',email:'',phone:'',notes:'Proveedor de demostración.'}],offers:[]};
+export function seedWorkspace(): Workspace {
+  const row = (
+    code: string,
+    name: string,
+    category: string,
+    qty: number,
+    location: string,
+    extra: Partial<InventoryItem> = {},
+  ): InventoryItem => ({
+    id: code,
+    code,
+    name,
+    category,
+    qty,
+    location,
+    brand: "",
+    size: "",
+    notes: "Muestra del catálogo STUNTS; saldo operativo de demostración.",
+    maintenanceQty: 0,
+    minQty: 1,
+    dailyRate: 0,
+    ...extra,
+  });
+  const inventory = [
+    row("S00001", "Riata en rollo", "Herramientas", 2, "Armario 2"),
+    row("S00011", "Brocha", "Herramientas", 1, "Armario 2"),
+    row(
+      "S00013",
+      "Cámara fotográfica con accesorios",
+      "Audiovisual",
+      5,
+      "G-6",
+      {
+        brand: "Nikon",
+        notes:
+          "El catálogo indica falta de tarjeta SD. Verificar accesorios al entregar.",
+        maintenanceQty: 1,
+      },
+    ),
+    row("S00015", "Correa de tapete grande", "Herramientas", 2, "Armario 2", {
+      brand: "Dollamur",
+    }),
+    row("S00020", "Amarre plástico 4,8 × 450", "Herramientas", 22, "Armario 2"),
+    row("S00026", "Rollo de cinta gaffer", "Herramientas", 1, "Armario 2"),
+    row("S00029", "Straps", "Rigging", 10, "Armario 2"),
+    row(
+      "S00032",
+      "Destornillador inalámbrico",
+      "Herramientas",
+      1,
+      "Armario 2",
+      { brand: "Black & Decker" },
+    ),
+    row("S00033", "Candados con clave", "Herramientas", 6, "Armario 2"),
+    row("S00084", "Galones de gel frío", "Protecciones", 5, "C-4"),
+    row("S00085", "Espaldera rígida S", "Protecciones", 2, "E-2", {
+      size: "S",
+    }),
+    row("S00086", "Espaldera rígida M", "Protecciones", 5, "E-2", {
+      size: "M",
+      brand: "Sulaite",
+    }),
+    row("S00087", "Espaldera rígida L", "Protecciones", 2, "E-2", {
+      size: "L",
+      brand: "Sulaite",
+    }),
+    row("S00093", "Rodillera rígida", "Protecciones", 12, "B-2"),
+    row("S00100", "Codera pendiente de revisión", "Protecciones", 2, "C-2", {
+      maintenanceQty: 2,
+      notes:
+        "El catálogo indica una pieza rota/sin pareja. Mantener en revisión hasta verificar.",
+    }),
+    row("S00103", "Codera rígida", "Protecciones", 18, "C-2"),
+    row("S00104", "Rodillera Bionic Plus S–M", "Protecciones", 2, "B-2", {
+      brand: "Alpinestars",
+      size: "S–M",
+    }),
+    row("S00106", "Pantalón de choque", "Protecciones", 1, "C-3", {
+      brand: "Bodyprox",
+      size: "M",
+    }),
+    row("S00107", "Kit de protecciones rígidas S", "Protecciones", 2, "C-2", {
+      brand: "Oxelo",
+      size: "S",
+    }),
+    row("S00110", "Kit de protecciones rígidas XL", "Protecciones", 0, "C-2", {
+      brand: "Oxelo",
+      size: "XL",
+    }),
+    row("S00114", "Guantes de entrenamiento", "Protecciones", 1, "C-3", {
+      brand: "Everlast",
+    }),
+    row(
+      "S00115",
+      "Focos de pateo",
+      "Protecciones",
+      1,
+      "Zona de entrenamiento",
+      { brand: "FIT" },
+    ),
+  ];
+  const base = (
+    id: string,
+    name: string,
+    client: string,
+    location: string,
+    start: string,
+    end: string,
+  ): Project => ({
+    id,
+    name,
+    client,
+    responsible: "Supervisor de stunts",
+    location,
+    start,
+    end,
+    status: "nuevo",
+    comments:
+      "Proyecto de demostración para validar el recorrido con el equipo.",
+    effects: [],
+    choices: {},
+    costs: { personal: 0, polizas: 0, margin: 0 },
+    createdAt: "2026-11-05T12:00:00Z",
+  });
+  const a = base(
+    "rodaje-demo",
+    "La última toma",
+    "Productora Horizonte · ejemplo",
+    "Bogotá",
+    "2026-11-09",
+    "2026-11-11",
+  );
+  a.effects = [
+    {
+      id: "fx1",
+      scene: "12",
+      effect: "Caída controlada",
+      itemId: "S00086",
+      qty: 3,
+    },
+    {
+      id: "fx2",
+      scene: "12",
+      effect: "Caída controlada",
+      itemId: "S00093",
+      qty: 6,
+    },
+    { id: "fx3", scene: "18", effect: "Rigging", itemId: "S00029", qty: 4 },
+    {
+      id: "fx4",
+      scene: "18",
+      effect: "Preparación de set",
+      itemId: "S00020",
+      qty: 10,
+    },
+    {
+      id: "fx5",
+      scene: "22",
+      effect: "Protección individual",
+      itemId: "S00110",
+      qty: 2,
+    },
+  ];
+  const b = base(
+    "comercial-demo",
+    "En movimiento",
+    "Agencia Norte · ejemplo",
+    "Medellín",
+    "2026-11-10",
+    "2026-11-12",
+  );
+  b.status = "cotizacion";
+  b.effects = [
+    { id: "fx6", scene: "4", effect: "Acción", itemId: "S00086", qty: 4 },
+    { id: "fx7", scene: "4", effect: "Acción", itemId: "S00093", qty: 4 },
+  ];
+  return {
+    inventory,
+    projects: [a, b],
+    reservations: [
+      {
+        id: "res-demo-1",
+        projectId: b.id,
+        itemId: "S00086",
+        qty: 4,
+        dispatchedQty: 0,
+        from: b.start,
+        to: b.end,
+      },
+    ],
+    dispatches: [],
+    movements: [
+      {
+        id: "mov-demo-1",
+        itemId: "S00086",
+        projectId: b.id,
+        kind: "reserva",
+        qty: 4,
+        label: "Reserva · En movimiento",
+        actor: "Datos de demostración",
+        date: "2026-11-05T12:00:00Z",
+        notes: "Escenario ilustrativo de conflicto de fechas.",
+      },
+    ],
+    suppliers: [
+      {
+        id: "proveedor-demo-1",
+        name: "Rigging y Protección · ejemplo",
+        category: "Protecciones",
+        email: "",
+        phone: "",
+        notes:
+          "Proveedor de demostración. Registra los proveedores reales desde Compras.",
+      },
+      {
+        id: "proveedor-demo-2",
+        name: "Equipos de Escena · ejemplo",
+        category: "Rigging",
+        email: "",
+        phone: "",
+        notes: "Proveedor de demostración.",
+      },
+    ],
+    offers: [],
+  };
 }

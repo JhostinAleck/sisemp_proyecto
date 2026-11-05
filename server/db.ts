@@ -1,4 +1,4 @@
-import pg from 'pg';
+import pg from "pg";
 
 export const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
@@ -8,4 +8,4 @@ export const pool = new pg.Pool({
   // Railway's private network uses ordinary PostgreSQL; TLS can be requested in DATABASE_URL.
 });
 // Prevent an idle-connection error from crashing the process without exposing connection details.
-pool.on('error', () => console.error('PostgreSQL idle connection error'));
+pool.on("error", () => console.error("PostgreSQL idle connection error"));

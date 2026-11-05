@@ -1,50 +1,558 @@
-import type {Workspace,User,Command,Movement,InventoryItem} from './types';
-import {can,type Permission} from '../access/policy';
-import {ensure} from './errors';
-import {businessDate} from './format';
-import {commandSchema} from './validation';
-import {inventoryCheck,stockSummary,reservedPeak,outQuantity} from '../inventory/service';
-import {editableProject,findProject,readyProject,invalidateRequirements} from '../projects/service';
-import {requireCoverage,captureQuote} from '../procurement/service';
-interface Context {now:string;id:()=>string}
-const permissions:Record<Command['type'],Permission>={
- 'project.create':'projects.write','project.update':'projects.write','project.delete':'quotes.approve','effect.add':'projects.write','effect.update':'projects.write','effect.remove':'projects.write',
- 'inventory.create':'inventory.write','inventory.update':'inventory.write','inventory.receive':'inventory.move','inventory.maintain':'inventory.move','inventory.release':'inventory.move',
- 'reservation.reserve':'reservations.write','reservation.release':'reservations.write','dispatch.create':'inventory.move','dispatch.return':'inventory.move',
- 'supplier.save':'procurement.write','rfq.save':'procurement.write','offer.save':'procurement.write','offer.choose':'procurement.write','quote.costs':'procurement.write','quote.submit':'procurement.write','quote.approve':'quotes.approve','quote.reject':'quotes.approve',
+import type {
+  Workspace,
+  User,
+  Command,
+  Movement,
+  InventoryItem,
+} from "./types";
+import { can, type Permission } from "../access/policy";
+import { ensure } from "./errors";
+import { businessDate } from "./format";
+import { commandSchema } from "./validation";
+import {
+  inventoryCheck,
+  stockSummary,
+  reservedPeak,
+  outQuantity,
+} from "../inventory/service";
+import {
+  editableProject,
+  findProject,
+  readyProject,
+  invalidateRequirements,
+} from "../projects/service";
+import { requireCoverage, captureQuote } from "../procurement/service";
+interface Context {
+  now: string;
+  id: () => string;
+}
+const permissions: Record<Command["type"], Permission> = {
+  "project.create": "projects.write",
+  "project.update": "projects.write",
+  "project.delete": "quotes.approve",
+  "effect.add": "projects.write",
+  "effect.update": "projects.write",
+  "effect.remove": "projects.write",
+  "inventory.create": "inventory.write",
+  "inventory.update": "inventory.write",
+  "inventory.receive": "inventory.move",
+  "inventory.maintain": "inventory.move",
+  "inventory.release": "inventory.move",
+  "reservation.reserve": "reservations.write",
+  "reservation.release": "reservations.write",
+  "dispatch.create": "inventory.move",
+  "dispatch.return": "inventory.move",
+  "supplier.save": "procurement.write",
+  "rfq.save": "procurement.write",
+  "offer.save": "procurement.write",
+  "offer.choose": "procurement.write",
+  "quote.costs": "procurement.write",
+  "quote.submit": "procurement.write",
+  "quote.approve": "quotes.approve",
+  "quote.reject": "quotes.approve",
 };
-export function applyCommand(original:Workspace,user:User,input:Command,ctx:Context={now:new Date().toISOString(),id:()=>crypto.randomUUID()}):{state:Workspace;summary:string;entityId:string}{
- const c=commandSchema.parse(input) as Command;ensure(user.active&&can(user.role,permissions[c.type]),'Tu perfil no tiene permiso para realizar esta operación',403);
- const s=structuredClone(original);const today=businessDate(ctx.now);let summary='',entityId='';
- const item=(id:string):InventoryItem=>{const i=s.inventory.find(x=>x.id===id);ensure(i,'No se encontró el artículo',404);return i;};
- const distinct=(ids:string[])=>ensure(new Set(ids).size===ids.length,'No repitas artículos en la misma operación');
- const move=(m:Omit<Movement,'id'|'actor'|'date'>)=>s.movements.push({...m,id:ctx.id(),actor:user.name,date:ctx.now});
- const reserve=(projectId:string,itemIds:string[])=>{const p=findProject(s,projectId);readyProject(p);distinct(itemIds);for(const iid of itemIds){const r=inventoryCheck(s,p).find(x=>x.item.id===iid);ensure(r,'Selecciona un material del desglose');const existing=s.reservations.find(x=>x.projectId===projectId&&x.itemId===iid);const qty=Math.min(r.required,r.free);if(existing?.qty===qty)continue;ensure(!existing?.dispatchedQty,'Este artículo ya tiene una salida; no se puede volver a reservar');ensure(qty>0,`No hay unidades disponibles de ${r.item.name}`);s.reservations=s.reservations.filter(x=>x.projectId!==projectId||x.itemId!==iid);s.reservations.push({id:ctx.id(),projectId,itemId:iid,qty,dispatchedQty:0,from:p.start,to:p.end});move({itemId:iid,projectId,kind:'reserva',qty,label:`Reserva · ${p.name}`,notes:''});}};
- switch(c.type){
- case 'project.create':{entityId=ctx.id();s.projects.unshift({...c.input,id:entityId,status:'nuevo',effects:[],choices:{},costs:{personal:0,polizas:0,margin:0},createdAt:ctx.now});summary='Proyecto creado';break;}
- case 'project.update':{const p=editableProject(s,c.id);if(p.start!==c.input.start||p.end!==c.input.end){editableProject(s,c.id,true);invalidateRequirements(s,p);}Object.assign(p,c.input);entityId=p.id;summary='Proyecto actualizado';break;}
- case 'project.delete':{const p=findProject(s,c.id);ensure(!s.dispatches.some(d=>d.projectId===p.id),'Este proyecto tiene actas de salida y debe conservar su historial');s.projects=s.projects.filter(x=>x.id!==p.id);s.reservations=s.reservations.filter(x=>x.projectId!==p.id);s.offers=s.offers.filter(x=>x.projectId!==p.id);entityId=p.id;summary=`Proyecto eliminado · ${p.name}`;break;}
- case 'effect.add':{const p=editableProject(s,c.projectId,true);item(c.input.itemId);invalidateRequirements(s,p);p.effects.push({...c.input,id:ctx.id()});entityId=p.id;summary='Material agregado al desglose';break;}
- case 'effect.update':{const p=editableProject(s,c.projectId,true),e=p.effects.find(x=>x.id===c.id);ensure(e,'No se encontró el material',404);e.qty=c.qty;invalidateRequirements(s,p);entityId=p.id;summary='Cantidad del desglose actualizada';break;}
- case 'effect.remove':{const p=editableProject(s,c.projectId,true);ensure(p.effects.some(e=>e.id===c.id),'No se encontró el material',404);p.effects=p.effects.filter(x=>x.id!==c.id);invalidateRequirements(s,p);entityId=p.id;summary='Material retirado del desglose';break;}
- case 'inventory.create':{ensure(!s.inventory.some(i=>i.code.toLowerCase()===c.input.code.toLowerCase()),'Ya existe un artículo con este código');ensure(c.input.maintenanceQty<=c.input.qty,'La cantidad en revisión supera las existencias');entityId=ctx.id();s.inventory.unshift({...c.input,id:entityId});move({itemId:entityId,kind:'ingreso',qty:c.input.qty,label:'Alta de artículo',notes:c.input.notes});summary='Artículo creado';break;}
- case 'inventory.update':{const i=item(c.id);ensure(!s.inventory.some(x=>x.id!==i.id&&x.code.toLowerCase()===c.input.code.toLowerCase()),'Ya existe un artículo con este código');Object.assign(i,c.input);entityId=i.id;summary='Ficha de artículo actualizada';break;}
- case 'inventory.receive':{const i=item(c.itemId);ensure(i.qty+c.qty<=1000000,'La cantidad supera el límite');i.qty+=c.qty;move({itemId:i.id,kind:'ingreso',qty:c.qty,label:'Ingreso a bodega',notes:c.notes});entityId=i.id;summary='Ingreso registrado';break;}
- case 'inventory.maintain':{const i=item(c.itemId);const free=i.qty-i.maintenanceQty-outQuantity(s,i.id)-reservedPeak(s,i.id,today,'9999-12-31');ensure(c.qty<=free,'Hay unidades fuera o reservadas; libera sus reservas antes de enviarlas a revisión');i.maintenanceQty+=c.qty;move({itemId:i.id,kind:'mantenimiento',qty:c.qty,label:'Ingreso a revisión',notes:c.notes});entityId=i.id;summary='Artículo enviado a revisión';break;}
- case 'inventory.release':{const i=item(c.itemId);ensure(c.qty<=i.maintenanceQty,'La cantidad supera las unidades en revisión');i.maintenanceQty-=c.qty;move({itemId:i.id,kind:'mantenimiento',qty:c.qty,label:'Revisión finalizada',notes:c.notes});entityId=i.id;summary='Unidades habilitadas después de revisión';break;}
- case 'reservation.reserve':{reserve(c.projectId,c.itemIds);entityId=c.projectId;summary='Reservas actualizadas según disponibilidad';break;}
- case 'reservation.release':{const p=findProject(s,c.projectId);for(const r of s.reservations.filter(r=>r.projectId===p.id)){if(r.qty>r.dispatchedQty)move({itemId:r.itemId,projectId:p.id,kind:'liberacion',qty:r.qty-r.dispatchedQty,label:`Reserva liberada · ${p.name}`,notes:''});}s.reservations=s.reservations.filter(r=>r.projectId!==p.id||r.dispatchedQty>0).map(r=>r.projectId===p.id?{...r,qty:r.dispatchedQty}:r);entityId=p.id;summary='Reservas pendientes liberadas';break;}
- case 'dispatch.create':{const p=findProject(s,c.projectId);readyProject(p);ensure(c.dueDate>=today&&c.dueDate>=p.start,'La devolución prevista debe ser posterior a hoy y al inicio del rodaje');distinct(c.lines.map(l=>l.itemId));entityId=ctx.id();for(const l of c.lines){const i=item(l.itemId),r=s.reservations.find(x=>x.projectId===p.id&&x.itemId===i.id);ensure(r&&r.qty-r.dispatchedQty>=l.qty,`Reserva insuficiente para ${i.name}`);ensure(stockSummary(s,i.id,today).physical>=l.qty,`No hay ${l.qty} unidades físicas de ${i.name} en bodega`);r.dispatchedQty+=l.qty;move({itemId:i.id,projectId:p.id,dispatchId:entityId,kind:'salida',qty:l.qty,label:`Salida · ${p.name}`,notes:c.notes});}s.dispatches.unshift({id:entityId,code:`SAL-${String(s.dispatches.length+1).padStart(4,'0')}`,projectId:p.id,responsible:c.responsible,dueDate:c.dueDate,date:ctx.now,actor:user.name,notes:c.notes,prepared:c.prepared,loaded:c.loaded,lines:c.lines.map(l=>({...l,returnedQty:0,damagedQty:0}))});summary='Salida registrada y acta generada';break;}
- case 'dispatch.return':{const d=s.dispatches.find(x=>x.id===c.dispatchId);ensure(d,'No se encontró el acta de salida',404);distinct(c.lines.map(l=>l.itemId));for(const l of c.lines){const line=d.lines.find(x=>x.itemId===l.itemId);ensure(line,'El artículo no pertenece a esta salida');ensure(l.qty<=line.qty-line.returnedQty,'La devolución supera la cantidad pendiente');ensure(l.damaged<=l.qty,'Las unidades con novedad superan la devolución');ensure(!l.damaged||l.notes.trim(),'Describe la novedad de los equipos recibidos');line.returnedQty+=l.qty;line.damagedQty+=l.damaged;const i=item(l.itemId);i.maintenanceQty+=l.damaged;move({itemId:i.id,projectId:d.projectId,dispatchId:d.id,kind:'retorno',qty:l.qty,label:`Retorno · ${d.code}${l.damaged?` · ${l.damaged} en revisión`:''}`,notes:l.notes});}entityId=d.id;summary='Devolución registrada';break;}
- case 'supplier.save':{entityId=c.id||ctx.id();if(c.id){const supplier=s.suppliers.find(x=>x.id===c.id);ensure(supplier,'No se encontró el proveedor',404);Object.assign(supplier,c.input);}else s.suppliers.push({id:entityId,...c.input});summary='Proveedor guardado';break;}
- case 'rfq.save':{const p=editableProject(s,c.projectId);readyProject(p);distinct(c.itemIds);distinct(c.supplierIds);ensure(c.supplierIds.every(id=>s.suppliers.some(x=>x.id===id)),'Proveedor no encontrado');ensure(c.deadline>=today&&c.deadline<=p.start,'La fecha límite debe estar entre hoy y el inicio del rodaje');const rows=inventoryCheck(s,p);ensure(c.itemIds.every(id=>rows.some(r=>r.item.id===id&&r.shortage>0)),'Selecciona solamente materiales con faltantes');p.rfq={lines:rows.filter(r=>c.itemIds.includes(r.item.id)).map(r=>({itemId:r.item.id,qty:r.shortage,rental:r.state==='reservado'})),specs:c.specs,supplierIds:c.supplierIds,deadline:c.deadline,sentAt:ctx.now};p.choices={};s.offers=s.offers.filter(o=>o.projectId!==p.id);p.status='cotizacion';entityId=p.id;summary='Solicitud preparada. Compártela con los proveedores desde tu canal habitual.';break;}
- case 'offer.save':{const p=editableProject(s,c.input.projectId),line=p.rfq?.lines.find(l=>l.itemId===c.input.itemId);ensure(line&&p.rfq?.supplierIds.includes(c.input.supplierId),'La oferta debe responder a una solicitud vigente');ensure(line.qty===c.input.qty,'La oferta debe cubrir la cantidad solicitada');const existing=s.offers.find(o=>o.projectId===p.id&&o.supplierId===c.input.supplierId&&o.itemId===c.input.itemId);if(c.id)ensure(existing?.id===c.id,'No se encontró la oferta',404);entityId=existing?.id||ctx.id();if(existing)Object.assign(existing,c.input);else s.offers.push({id:entityId,...c.input});summary='Oferta registrada manualmente';break;}
- case 'offer.choose':{const p=editableProject(s,c.projectId),o=s.offers.find(x=>x.projectId===p.id&&x.itemId===c.itemId&&x.supplierId===c.supplierId);ensure(o?.available&&p.rfq?.supplierIds.includes(c.supplierId),'Selecciona una oferta disponible de la solicitud vigente');p.choices[c.itemId]=c.supplierId;entityId=p.id;summary='Oferta seleccionada';break;}
- case 'quote.costs':{const p=editableProject(s,c.projectId);p.costs=c.costs;entityId=p.id;summary='Costos actualizados';break;}
- case 'quote.submit':{const p=editableProject(s,c.projectId);readyProject(p);requireCoverage(s,p,today);p.quoteSnapshot=captureQuote(s,p);p.status='enviado';entityId=p.id;summary='Cotización enviada a revisión de Gerencia';break;}
- case 'quote.approve':{const p=findProject(s,c.projectId);ensure(p.status==='enviado','Solo se pueden aprobar cotizaciones enviadas a revisión');readyProject(p);requireCoverage(s,p,today);const ids=inventoryCheck(s,p).filter(r=>r.free>0).map(r=>r.item.id);if(ids.length)reserve(p.id,ids);p.quoteSnapshot=p.quoteSnapshot||captureQuote(s,p);p.quoteSnapshot.approvedAt=ctx.now;p.quoteSnapshot.approvedBy=user.name;p.status='aprobado';entityId=p.id;summary='Cotización aprobada; inventario propio reservado. Las compras se reciben por separado.';break;}
- case 'quote.reject':{const p=findProject(s,c.projectId);ensure(p.status==='enviado','Solo se pueden rechazar cotizaciones enviadas a revisión');p.status='rechazado';delete p.quoteSnapshot;p.comments=`${p.comments}\nRechazo de Gerencia: ${c.notes}`.trim();entityId=p.id;summary='Cotización rechazada con observación';break;}
- }
- for(const i of s.inventory){ensure(Number.isSafeInteger(i.qty)&&i.qty>=0&&i.qty<=1000000,'Existencias inválidas');ensure(i.maintenanceQty>=0&&i.maintenanceQty+outQuantity(s,i.id)<=i.qty,'La operación dejaría existencias físicas negativas');}
- return {state:s,summary,entityId};
+export function applyCommand(
+  original: Workspace,
+  user: User,
+  input: Command,
+  ctx: Context = {
+    now: new Date().toISOString(),
+    id: () => crypto.randomUUID(),
+  },
+): { state: Workspace; summary: string; entityId: string } {
+  const c = commandSchema.parse(input) as Command;
+  ensure(
+    user.active && can(user.role, permissions[c.type]),
+    "Tu perfil no tiene permiso para realizar esta operación",
+    403,
+  );
+  const s = structuredClone(original);
+  const today = businessDate(ctx.now);
+  let summary = "",
+    entityId = "";
+  const item = (id: string): InventoryItem => {
+    const i = s.inventory.find((x) => x.id === id);
+    ensure(i, "No se encontró el artículo", 404);
+    return i;
+  };
+  const distinct = (ids: string[]) =>
+    ensure(
+      new Set(ids).size === ids.length,
+      "No repitas artículos en la misma operación",
+    );
+  const move = (m: Omit<Movement, "id" | "actor" | "date">) =>
+    s.movements.push({ ...m, id: ctx.id(), actor: user.name, date: ctx.now });
+  const reserve = (projectId: string, itemIds: string[]) => {
+    const p = findProject(s, projectId);
+    readyProject(p);
+    distinct(itemIds);
+    for (const iid of itemIds) {
+      const r = inventoryCheck(s, p).find((x) => x.item.id === iid);
+      ensure(r, "Selecciona un material del desglose");
+      const existing = s.reservations.find(
+        (x) => x.projectId === projectId && x.itemId === iid,
+      );
+      const qty = Math.min(r.required, r.free);
+      if (existing?.qty === qty) continue;
+      ensure(
+        !existing?.dispatchedQty,
+        "Este artículo ya tiene una salida; no se puede volver a reservar",
+      );
+      ensure(qty > 0, `No hay unidades disponibles de ${r.item.name}`);
+      s.reservations = s.reservations.filter(
+        (x) => x.projectId !== projectId || x.itemId !== iid,
+      );
+      s.reservations.push({
+        id: ctx.id(),
+        projectId,
+        itemId: iid,
+        qty,
+        dispatchedQty: 0,
+        from: p.start,
+        to: p.end,
+      });
+      move({
+        itemId: iid,
+        projectId,
+        kind: "reserva",
+        qty,
+        label: `Reserva · ${p.name}`,
+        notes: "",
+      });
+    }
+  };
+  switch (c.type) {
+    case "project.create": {
+      entityId = ctx.id();
+      s.projects.unshift({
+        ...c.input,
+        id: entityId,
+        status: "nuevo",
+        effects: [],
+        choices: {},
+        costs: { personal: 0, polizas: 0, margin: 0 },
+        createdAt: ctx.now,
+      });
+      summary = "Proyecto creado";
+      break;
+    }
+    case "project.update": {
+      const p = editableProject(s, c.id);
+      if (p.start !== c.input.start || p.end !== c.input.end) {
+        editableProject(s, c.id, true);
+        invalidateRequirements(s, p);
+      }
+      Object.assign(p, c.input);
+      entityId = p.id;
+      summary = "Proyecto actualizado";
+      break;
+    }
+    case "project.delete": {
+      const p = findProject(s, c.id);
+      ensure(
+        !s.dispatches.some((d) => d.projectId === p.id),
+        "Este proyecto tiene actas de salida y debe conservar su historial",
+      );
+      s.projects = s.projects.filter((x) => x.id !== p.id);
+      s.reservations = s.reservations.filter((x) => x.projectId !== p.id);
+      s.offers = s.offers.filter((x) => x.projectId !== p.id);
+      entityId = p.id;
+      summary = `Proyecto eliminado · ${p.name}`;
+      break;
+    }
+    case "effect.add": {
+      const p = editableProject(s, c.projectId, true);
+      item(c.input.itemId);
+      invalidateRequirements(s, p);
+      p.effects.push({ ...c.input, id: ctx.id() });
+      entityId = p.id;
+      summary = "Material agregado al desglose";
+      break;
+    }
+    case "effect.update": {
+      const p = editableProject(s, c.projectId, true),
+        e = p.effects.find((x) => x.id === c.id);
+      ensure(e, "No se encontró el material", 404);
+      e.qty = c.qty;
+      invalidateRequirements(s, p);
+      entityId = p.id;
+      summary = "Cantidad del desglose actualizada";
+      break;
+    }
+    case "effect.remove": {
+      const p = editableProject(s, c.projectId, true);
+      ensure(
+        p.effects.some((e) => e.id === c.id),
+        "No se encontró el material",
+        404,
+      );
+      p.effects = p.effects.filter((x) => x.id !== c.id);
+      invalidateRequirements(s, p);
+      entityId = p.id;
+      summary = "Material retirado del desglose";
+      break;
+    }
+    case "inventory.create": {
+      ensure(
+        !s.inventory.some(
+          (i) => i.code.toLowerCase() === c.input.code.toLowerCase(),
+        ),
+        "Ya existe un artículo con este código",
+      );
+      ensure(
+        c.input.maintenanceQty <= c.input.qty,
+        "La cantidad en revisión supera las existencias",
+      );
+      entityId = ctx.id();
+      s.inventory.unshift({ ...c.input, id: entityId });
+      move({
+        itemId: entityId,
+        kind: "ingreso",
+        qty: c.input.qty,
+        label: "Alta de artículo",
+        notes: c.input.notes,
+      });
+      summary = "Artículo creado";
+      break;
+    }
+    case "inventory.update": {
+      const i = item(c.id);
+      ensure(
+        !s.inventory.some(
+          (x) =>
+            x.id !== i.id &&
+            x.code.toLowerCase() === c.input.code.toLowerCase(),
+        ),
+        "Ya existe un artículo con este código",
+      );
+      Object.assign(i, c.input);
+      entityId = i.id;
+      summary = "Ficha de artículo actualizada";
+      break;
+    }
+    case "inventory.receive": {
+      const i = item(c.itemId);
+      ensure(i.qty + c.qty <= 1000000, "La cantidad supera el límite");
+      i.qty += c.qty;
+      move({
+        itemId: i.id,
+        kind: "ingreso",
+        qty: c.qty,
+        label: "Ingreso a bodega",
+        notes: c.notes,
+      });
+      entityId = i.id;
+      summary = "Ingreso registrado";
+      break;
+    }
+    case "inventory.maintain": {
+      const i = item(c.itemId);
+      const free =
+        i.qty -
+        i.maintenanceQty -
+        outQuantity(s, i.id) -
+        reservedPeak(s, i.id, today, "9999-12-31");
+      ensure(
+        c.qty <= free,
+        "Hay unidades fuera o reservadas; libera sus reservas antes de enviarlas a revisión",
+      );
+      i.maintenanceQty += c.qty;
+      move({
+        itemId: i.id,
+        kind: "mantenimiento",
+        qty: c.qty,
+        label: "Ingreso a revisión",
+        notes: c.notes,
+      });
+      entityId = i.id;
+      summary = "Artículo enviado a revisión";
+      break;
+    }
+    case "inventory.release": {
+      const i = item(c.itemId);
+      ensure(
+        c.qty <= i.maintenanceQty,
+        "La cantidad supera las unidades en revisión",
+      );
+      i.maintenanceQty -= c.qty;
+      move({
+        itemId: i.id,
+        kind: "mantenimiento",
+        qty: c.qty,
+        label: "Revisión finalizada",
+        notes: c.notes,
+      });
+      entityId = i.id;
+      summary = "Unidades habilitadas después de revisión";
+      break;
+    }
+    case "reservation.reserve": {
+      reserve(c.projectId, c.itemIds);
+      entityId = c.projectId;
+      summary = "Reservas actualizadas según disponibilidad";
+      break;
+    }
+    case "reservation.release": {
+      const p = findProject(s, c.projectId);
+      for (const r of s.reservations.filter((r) => r.projectId === p.id)) {
+        if (r.qty > r.dispatchedQty)
+          move({
+            itemId: r.itemId,
+            projectId: p.id,
+            kind: "liberacion",
+            qty: r.qty - r.dispatchedQty,
+            label: `Reserva liberada · ${p.name}`,
+            notes: "",
+          });
+      }
+      s.reservations = s.reservations
+        .filter((r) => r.projectId !== p.id || r.dispatchedQty > 0)
+        .map((r) =>
+          r.projectId === p.id ? { ...r, qty: r.dispatchedQty } : r,
+        );
+      entityId = p.id;
+      summary = "Reservas pendientes liberadas";
+      break;
+    }
+    case "dispatch.create": {
+      const p = findProject(s, c.projectId);
+      readyProject(p);
+      ensure(
+        c.dueDate >= today && c.dueDate >= p.start,
+        "La devolución prevista debe ser posterior a hoy y al inicio del rodaje",
+      );
+      distinct(c.lines.map((l) => l.itemId));
+      entityId = ctx.id();
+      for (const l of c.lines) {
+        const i = item(l.itemId),
+          r = s.reservations.find(
+            (x) => x.projectId === p.id && x.itemId === i.id,
+          );
+        ensure(
+          r && r.qty - r.dispatchedQty >= l.qty,
+          `Reserva insuficiente para ${i.name}`,
+        );
+        ensure(
+          stockSummary(s, i.id, today).physical >= l.qty,
+          `No hay ${l.qty} unidades físicas de ${i.name} en bodega`,
+        );
+        r.dispatchedQty += l.qty;
+        move({
+          itemId: i.id,
+          projectId: p.id,
+          dispatchId: entityId,
+          kind: "salida",
+          qty: l.qty,
+          label: `Salida · ${p.name}`,
+          notes: c.notes,
+        });
+      }
+      s.dispatches.unshift({
+        id: entityId,
+        code: `SAL-${String(s.dispatches.length + 1).padStart(4, "0")}`,
+        projectId: p.id,
+        responsible: c.responsible,
+        dueDate: c.dueDate,
+        date: ctx.now,
+        actor: user.name,
+        notes: c.notes,
+        prepared: c.prepared,
+        loaded: c.loaded,
+        lines: c.lines.map((l) => ({ ...l, returnedQty: 0, damagedQty: 0 })),
+      });
+      summary = "Salida registrada y acta generada";
+      break;
+    }
+    case "dispatch.return": {
+      const d = s.dispatches.find((x) => x.id === c.dispatchId);
+      ensure(d, "No se encontró el acta de salida", 404);
+      distinct(c.lines.map((l) => l.itemId));
+      for (const l of c.lines) {
+        const line = d.lines.find((x) => x.itemId === l.itemId);
+        ensure(line, "El artículo no pertenece a esta salida");
+        ensure(
+          l.qty <= line.qty - line.returnedQty,
+          "La devolución supera la cantidad pendiente",
+        );
+        ensure(
+          l.damaged <= l.qty,
+          "Las unidades con novedad superan la devolución",
+        );
+        ensure(
+          !l.damaged || l.notes.trim(),
+          "Describe la novedad de los equipos recibidos",
+        );
+        line.returnedQty += l.qty;
+        line.damagedQty += l.damaged;
+        const i = item(l.itemId);
+        i.maintenanceQty += l.damaged;
+        move({
+          itemId: i.id,
+          projectId: d.projectId,
+          dispatchId: d.id,
+          kind: "retorno",
+          qty: l.qty,
+          label: `Retorno · ${d.code}${l.damaged ? ` · ${l.damaged} en revisión` : ""}`,
+          notes: l.notes,
+        });
+      }
+      entityId = d.id;
+      summary = "Devolución registrada";
+      break;
+    }
+    case "supplier.save": {
+      entityId = c.id || ctx.id();
+      if (c.id) {
+        const supplier = s.suppliers.find((x) => x.id === c.id);
+        ensure(supplier, "No se encontró el proveedor", 404);
+        Object.assign(supplier, c.input);
+      } else s.suppliers.push({ id: entityId, ...c.input });
+      summary = "Proveedor guardado";
+      break;
+    }
+    case "rfq.save": {
+      const p = editableProject(s, c.projectId);
+      readyProject(p);
+      distinct(c.itemIds);
+      distinct(c.supplierIds);
+      ensure(
+        c.supplierIds.every((id) => s.suppliers.some((x) => x.id === id)),
+        "Proveedor no encontrado",
+      );
+      ensure(
+        c.deadline >= today && c.deadline <= p.start,
+        "La fecha límite debe estar entre hoy y el inicio del rodaje",
+      );
+      const rows = inventoryCheck(s, p);
+      ensure(
+        c.itemIds.every((id) =>
+          rows.some((r) => r.item.id === id && r.shortage > 0),
+        ),
+        "Selecciona solamente materiales con faltantes",
+      );
+      p.rfq = {
+        lines: rows
+          .filter((r) => c.itemIds.includes(r.item.id))
+          .map((r) => ({
+            itemId: r.item.id,
+            qty: r.shortage,
+            rental: r.state === "reservado",
+          })),
+        specs: c.specs,
+        supplierIds: c.supplierIds,
+        deadline: c.deadline,
+        sentAt: ctx.now,
+      };
+      p.choices = {};
+      s.offers = s.offers.filter((o) => o.projectId !== p.id);
+      p.status = "cotizacion";
+      entityId = p.id;
+      summary =
+        "Solicitud preparada. Compártela con los proveedores desde tu canal habitual.";
+      break;
+    }
+    case "offer.save": {
+      const p = editableProject(s, c.input.projectId),
+        line = p.rfq?.lines.find((l) => l.itemId === c.input.itemId);
+      ensure(
+        line && p.rfq?.supplierIds.includes(c.input.supplierId),
+        "La oferta debe responder a una solicitud vigente",
+      );
+      ensure(
+        line.qty === c.input.qty,
+        "La oferta debe cubrir la cantidad solicitada",
+      );
+      const existing = s.offers.find(
+        (o) =>
+          o.projectId === p.id &&
+          o.supplierId === c.input.supplierId &&
+          o.itemId === c.input.itemId,
+      );
+      if (c.id) ensure(existing?.id === c.id, "No se encontró la oferta", 404);
+      entityId = existing?.id || ctx.id();
+      if (existing) Object.assign(existing, c.input);
+      else s.offers.push({ id: entityId, ...c.input });
+      summary = "Oferta registrada manualmente";
+      break;
+    }
+    case "offer.choose": {
+      const p = editableProject(s, c.projectId),
+        o = s.offers.find(
+          (x) =>
+            x.projectId === p.id &&
+            x.itemId === c.itemId &&
+            x.supplierId === c.supplierId,
+        );
+      ensure(
+        o?.available && p.rfq?.supplierIds.includes(c.supplierId),
+        "Selecciona una oferta disponible de la solicitud vigente",
+      );
+      p.choices[c.itemId] = c.supplierId;
+      entityId = p.id;
+      summary = "Oferta seleccionada";
+      break;
+    }
+    case "quote.costs": {
+      const p = editableProject(s, c.projectId);
+      p.costs = c.costs;
+      entityId = p.id;
+      summary = "Costos actualizados";
+      break;
+    }
+    case "quote.submit": {
+      const p = editableProject(s, c.projectId);
+      readyProject(p);
+      requireCoverage(s, p, today);
+      p.quoteSnapshot = captureQuote(s, p);
+      p.status = "enviado";
+      entityId = p.id;
+      summary = "Cotización enviada a revisión de Gerencia";
+      break;
+    }
+    case "quote.approve": {
+      const p = findProject(s, c.projectId);
+      ensure(
+        p.status === "enviado",
+        "Solo se pueden aprobar cotizaciones enviadas a revisión",
+      );
+      readyProject(p);
+      requireCoverage(s, p, today);
+      const ids = inventoryCheck(s, p)
+        .filter((r) => r.free > 0)
+        .map((r) => r.item.id);
+      if (ids.length) reserve(p.id, ids);
+      p.quoteSnapshot = p.quoteSnapshot || captureQuote(s, p);
+      p.quoteSnapshot.approvedAt = ctx.now;
+      p.quoteSnapshot.approvedBy = user.name;
+      p.status = "aprobado";
+      entityId = p.id;
+      summary =
+        "Cotización aprobada; inventario propio reservado. Las compras se reciben por separado.";
+      break;
+    }
+    case "quote.reject": {
+      const p = findProject(s, c.projectId);
+      ensure(
+        p.status === "enviado",
+        "Solo se pueden rechazar cotizaciones enviadas a revisión",
+      );
+      p.status = "rechazado";
+      delete p.quoteSnapshot;
+      p.comments = `${p.comments}\nRechazo de Gerencia: ${c.notes}`.trim();
+      entityId = p.id;
+      summary = "Cotización rechazada con observación";
+      break;
+    }
+  }
+  for (const i of s.inventory) {
+    ensure(
+      Number.isSafeInteger(i.qty) && i.qty >= 0 && i.qty <= 1000000,
+      "Existencias inválidas",
+    );
+    ensure(
+      i.maintenanceQty >= 0 && i.maintenanceQty + outQuantity(s, i.id) <= i.qty,
+      "La operación dejaría existencias físicas negativas",
+    );
+  }
+  return { state: s, summary, entityId };
 }

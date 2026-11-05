@@ -1,9 +1,116 @@
-import type {Workspace,Project,QuoteSnapshot} from '../shared/types';
-import {inventoryCheck} from '../inventory/service';
-import {shootingDays} from '../shared/format';
-import {ensure} from '../shared/errors';
-export interface QuoteTotals {inventory:number;suppliers:number;personal:number;polizas:number;subtotal:number;margin:number;total:number}
-export function quoteTotals(s:Workspace,p:Project):QuoteTotals {if(p.quoteSnapshot&&(p.status==='aprobado'||p.status==='enviado'))return {...p.quoteSnapshot.totals};const days=shootingDays(p);const inventory=inventoryCheck(s,p).reduce((n,r)=>n+Math.min(r.required,r.free)*r.item.dailyRate*days,0);let suppliers=0;for(const[itemId,supplierId]of Object.entries(p.choices)){const o=s.offers.find(x=>x.projectId===p.id&&x.itemId===itemId&&x.supplierId===supplierId&&x.available);if(o)suppliers+=o.price;}const {personal,polizas}=p.costs,subtotal=inventory+suppliers+personal+polizas,margin=Math.round(subtotal*p.costs.margin/100);return {inventory,suppliers,personal,polizas,subtotal,margin,total:subtotal+margin};}
-export function requireCoverage(s:Workspace,p:Project,today:string){for(const row of inventoryCheck(s,p)){if(!row.shortage)continue;const line=p.rfq?.lines.find(l=>l.itemId===row.item.id);const chosen=p.choices[row.item.id];const o=s.offers.find(x=>x.projectId===p.id&&x.itemId===row.item.id&&x.supplierId===chosen);ensure(line&&o&&o.available&&o.qty===line.qty&&o.qty>=row.shortage&&p.rfq?.supplierIds.includes(o.supplierId),`Falta una oferta disponible que cubra ${row.shortage} unidades de ${row.item.name}`);ensure(Date.parse(today)+o.leadDays*86400000<=Date.parse(p.start),`El proveedor de ${row.item.name} no llega antes del rodaje`);}}
+import type { Workspace, Project, QuoteSnapshot } from "../shared/types";
+import { inventoryCheck } from "../inventory/service";
+import { shootingDays } from "../shared/format";
+import { ensure } from "../shared/errors";
+export interface QuoteTotals {
+  inventory: number;
+  suppliers: number;
+  personal: number;
+  polizas: number;
+  subtotal: number;
+  margin: number;
+  total: number;
+}
+export function quoteTotals(s: Workspace, p: Project): QuoteTotals {
+  if (p.quoteSnapshot && (p.status === "aprobado" || p.status === "enviado"))
+    return { ...p.quoteSnapshot.totals };
+  const days = shootingDays(p);
+  const inventory = inventoryCheck(s, p).reduce(
+    (n, r) => n + Math.min(r.required, r.free) * r.item.dailyRate * days,
+    0,
+  );
+  let suppliers = 0;
+  for (const [itemId, supplierId] of Object.entries(p.choices)) {
+    const o = s.offers.find(
+      (x) =>
+        x.projectId === p.id &&
+        x.itemId === itemId &&
+        x.supplierId === supplierId &&
+        x.available,
+    );
+    if (o) suppliers += o.price;
+  }
+  const { personal, polizas } = p.costs,
+    subtotal = inventory + suppliers + personal + polizas,
+    margin = Math.round((subtotal * p.costs.margin) / 100);
+  return {
+    inventory,
+    suppliers,
+    personal,
+    polizas,
+    subtotal,
+    margin,
+    total: subtotal + margin,
+  };
+}
+export function requireCoverage(s: Workspace, p: Project, today: string) {
+  for (const row of inventoryCheck(s, p)) {
+    if (!row.shortage) continue;
+    const line = p.rfq?.lines.find((l) => l.itemId === row.item.id);
+    const chosen = p.choices[row.item.id];
+    const o = s.offers.find(
+      (x) =>
+        x.projectId === p.id &&
+        x.itemId === row.item.id &&
+        x.supplierId === chosen,
+    );
+    ensure(
+      line &&
+        o &&
+        o.available &&
+        o.qty === line.qty &&
+        o.qty >= row.shortage &&
+        p.rfq?.supplierIds.includes(o.supplierId),
+      `Falta una oferta disponible que cubra ${row.shortage} unidades de ${row.item.name}`,
+    );
+    ensure(
+      Date.parse(today) + o.leadDays * 86400000 <= Date.parse(p.start),
+      `El proveedor de ${row.item.name} no llega antes del rodaje`,
+    );
+  }
+}
 
-export function captureQuote(s:Workspace,p:Project):QuoteSnapshot {const totals=quoteTotals(s,{...p,quoteSnapshot:undefined});const ownLines=inventoryCheck(s,p).filter(r=>Math.min(r.required,r.free)>0).map(r=>({itemId:r.item.id,name:r.item.name,qty:Math.min(r.required,r.free),dailyRate:r.item.dailyRate}));const supplierLines=Object.entries(p.choices).flatMap(([itemId,supplierId])=>{const o=s.offers.find(x=>x.projectId===p.id&&x.itemId===itemId&&x.supplierId===supplierId&&x.available);return o?[{itemId,name:s.inventory.find(i=>i.id===itemId)?.name||itemId,supplierId,supplierName:s.suppliers.find(q=>q.id===supplierId)?.name||supplierId,qty:o.qty,price:o.price}]:[];});return {totals,days:shootingDays(p),ownLines,supplierLines,approvedAt:'',approvedBy:''};}
+export function captureQuote(s: Workspace, p: Project): QuoteSnapshot {
+  const totals = quoteTotals(s, { ...p, quoteSnapshot: undefined });
+  const ownLines = inventoryCheck(s, p)
+    .filter((r) => Math.min(r.required, r.free) > 0)
+    .map((r) => ({
+      itemId: r.item.id,
+      name: r.item.name,
+      qty: Math.min(r.required, r.free),
+      dailyRate: r.item.dailyRate,
+    }));
+  const supplierLines = Object.entries(p.choices).flatMap(
+    ([itemId, supplierId]) => {
+      const o = s.offers.find(
+        (x) =>
+          x.projectId === p.id &&
+          x.itemId === itemId &&
+          x.supplierId === supplierId &&
+          x.available,
+      );
+      return o
+        ? [
+            {
+              itemId,
+              name: s.inventory.find((i) => i.id === itemId)?.name || itemId,
+              supplierId,
+              supplierName:
+                s.suppliers.find((q) => q.id === supplierId)?.name ||
+                supplierId,
+              qty: o.qty,
+              price: o.price,
+            },
+          ]
+        : [];
+    },
+  );
+  return {
+    totals,
+    days: shootingDays(p),
+    ownLines,
+    supplierLines,
+    approvedAt: "",
+    approvedBy: "",
+  };
+}

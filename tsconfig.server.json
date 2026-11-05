@@ -1,24 +1,15 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": [
-      "ES2022",
-      "DOM"
-    ],
+    "lib": ["ES2022", "DOM"],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
     "esModuleInterop": true,
-    "types": [
-      "node"
-    ],
+    "types": ["node"],
     "allowImportingTsExtensions": true
   },
-  "include": [
-    "server/**/*.ts",
-    "tests/**/*.ts",
-    "src/domains/**/*.ts"
-  ]
+  "include": ["server/**/*.ts", "tests/**/*.ts", "src/domains/**/*.ts"]
 }
