@@ -4,14 +4,16 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "dev:api": "tsx watch server/index.ts",
+    "dev": "tsx scripts/dev.ts",
+    "dev:api": "tsx scripts/with-local-env.ts server/index.ts",
     "build": "tsc -p tsconfig.json && tsc -p tsconfig.server.json && vite build",
     "start": "tsx server/index.ts",
     "test": "tsx --test tests/*.test.ts",
-    "db:migrate": "tsx server/migrate.ts",
-    "db:bootstrap": "tsx server/access/bootstrap.ts",
-    "test:e2e": "playwright test"
+    "db:migrate": "tsx scripts/with-local-env.ts server/migrate.ts",
+    "db:bootstrap": "tsx scripts/with-local-env.ts server/access/bootstrap.ts",
+    "test:e2e": "playwright test",
+    "dev:web": "vite --host 127.0.0.1 --strictPort",
+    "local:setup": "tsx scripts/local-setup.ts"
   },
   "dependencies": {
     "express": "5.3.0",

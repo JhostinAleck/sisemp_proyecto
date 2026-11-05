@@ -27,29 +27,22 @@ server/migrations/        Esquema versionado de PostgreSQL
 
 La API Express y PostgreSQL viven en Railway. Vercel sirve el frontend y reenvía `/api` al backend. La base no tiene un proxy público. Los datos operativos se guardan en un agregado JSONB por espacio de trabajo; `SELECT FOR UPDATE` serializa sus modificaciones. Usuarios, sesiones, invitaciones, solicitudes idempotentes y auditoría tienen tablas separadas. Para el tamaño actual esto mantiene el modelo sencillo; un volumen mayor requeriría normalizar las entidades y paginar consultas.
 
-## Desarrollo
+## Desarrollo local
 
-Node **22.12 o posterior**, PostgreSQL y npm:
+Requiere Node **22.12 o posterior** y PostgreSQL local. Con PostgreSQL ya iniciado:
 
 ```sh
 npm ci
-cp .env.example .env.local
-# Configura una base dedicada y APP_ORIGIN en .env.local.
-node --env-file=.env.local --import tsx server/migrate.ts
-node --env-file=.env.local --import tsx server/index.ts
-# En otra terminal:
 npm run dev
 ```
 
-Vite usa `http://127.0.0.1:5173` y reenvía `/api` a `http://127.0.0.1:3000`. El servidor inicializa la muestra solo si el espacio está vacío; reiniciar o desplegar no restaura ni borra datos.
+Abre **http://localhost:5173**. Un solo comando prepara la base dedicada `burning_bull`, aplica migraciones y arranca API y frontend. No hace falta Docker ni configurar servicios de producción. Si tu PostgreSQL requiere usuario o contraseña, copia `.env.example` a `.env.local` y ajusta `DATABASE_URL`. La configuración se carga automáticamente.
 
-Primera cuenta (en local o por SSH dentro del servicio Railway):
+El primer inicio muestra un enlace privado para activar `gerencia@burningbull.local` y elegir una contraseña de 12–128 caracteres. También queda en `.secrets/local-access.json`; no lo compartas. No existen contraseñas predeterminadas. Una vez activada la cuenta, inicia sesión normalmente. Los datos y las cuentas permanecen al reiniciar. Desde Equipo y accesos puedes invitar a los demás integrantes.
 
-```sh
-npm run db:bootstrap -- --email gerente@empresa.com
-```
+`Ctrl+C` detiene ambos procesos. Si un puerto está ocupado, el comando avisa y conserva el servicio existente. Puedes elegir otros con `DEV_PORT=5174 DEV_API_PORT=3001 npm run dev` o `npm run dev -- --port 5174`.
 
-El enlace privado se escribe en `.secrets/bootstrap.json`, nunca en el registro. Al abrirlo, el gerente establece su contraseña (12–128 caracteres). Luego crea invitaciones desde Equipo y accesos. No hay registro abierto ni contraseñas predeterminadas. La configuración inicial en el despliegue usa una invitación de arranque de un solo uso, descrita en [DEPLOYMENT.md](docs/DEPLOYMENT.md).
+Las opciones de PostgreSQL, Docker opcional, acceso inicial y solución de problemas están en [LOCAL.md](docs/LOCAL.md). La configuración inicial de producción está en [DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Verificación
 

@@ -1,0 +1,18 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: burning_bull
+      POSTGRES_PASSWORD: burning_bull_dev
+      POSTGRES_DB: burning_bull
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - burning_bull_local_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U burning_bull -d burning_bull"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  burning_bull_local_pg:
