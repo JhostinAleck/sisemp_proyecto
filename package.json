@@ -1,23 +1,39 @@
 {
-  "name": "boom-cotizador",
+  "name": "burning-bull-platform",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "dev": "vite --host 127.0.0.1",
+    "dev:api": "tsx watch server/index.ts",
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.server.json && vite build",
+    "start": "tsx server/index.ts",
+    "test": "tsx --test tests/*.test.ts",
+    "db:migrate": "tsx server/migrate.ts",
+    "db:bootstrap": "tsx server/access/bootstrap.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
+    "express": "5.3.0",
+    "pg": "8.23.1",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "react-router-dom": "6.28.0"
+    "react-router-dom": "^7.18.5",
+    "tsx": "4.23.15",
+    "zod": "4.6.7"
   },
   "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@types/express": "5.0.6",
+    "@types/node": "22.19.15",
+    "@types/pg": "8.23.1",
     "@types/react": "18.3.12",
     "@types/react-dom": "18.3.1",
-    "@vitejs/plugin-react": "4.3.4",
+    "@vitejs/plugin-react": "5.2.0",
     "typescript": "5.6.3",
-    "vite": "5.4.11"
+    "vite": "7.3.7"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }
