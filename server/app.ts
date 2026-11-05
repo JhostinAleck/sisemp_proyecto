@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { z, ZodError } from "zod";
 import { pool } from "./db";
 import { authRouter, requireUser } from "./access/router";
+import { isAllowedOrigin } from "./access/origin";
 import { runCommand } from "./commands";
 import { can } from "../src/domains/access/policy";
 import { commandSchema } from "../src/domains/shared/validation";
@@ -26,7 +27,11 @@ app.use((req, _res, next) => {
   if (!["GET", "HEAD", "OPTIONS"].includes(req.method)) {
     ensure(process.env.APP_ORIGIN, "El acceso no está configurado", 503);
     ensure(
-      req.get("Origin") === new URL(process.env.APP_ORIGIN).origin,
+      isAllowedOrigin(
+        req.get("Origin"),
+        process.env.APP_ORIGIN,
+        process.env.NODE_ENV,
+      ),
       "La solicitud no proviene de la aplicación autorizada",
       403,
     );
@@ -69,15 +74,13 @@ app.use("/api", (_req, res) => {
 });
 const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
   if (error instanceof ZodError) {
-    res
-      .status(400)
-      .json({
-        error: "Revisa los datos de la solicitud.",
-        details: error.issues.map((i) => ({
-          field: i.path.join("."),
-          message: i.message,
-        })),
-      });
+    res.status(400).json({
+      error: "Revisa los datos de la solicitud.",
+      details: error.issues.map((i) => ({
+        field: i.path.join("."),
+        message: i.message,
+      })),
+    });
     return;
   }
   const status =
@@ -91,13 +94,11 @@ const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
       requestId: res.locals.requestId,
       code: error.code || error.name || "unknown",
     });
-  res
-    .status(status)
-    .json({
-      error:
-        status >= 500
-          ? "No fue posible completar la operación. Intenta de nuevo."
-          : error.message || "Solicitud inválida.",
-    });
+  res.status(status).json({
+    error:
+      status >= 500
+        ? "No fue posible completar la operación. Intenta de nuevo."
+        : error.message || "Solicitud inválida.",
+  });
 };
 app.use(errorHandler);
