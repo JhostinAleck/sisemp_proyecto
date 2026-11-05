@@ -52,5 +52,5 @@
 ### Task 5: Integration, verification and release (root)
 - [x] Run all domain/auth tests, TypeScript/build, migration on real database, concurrent integration tests and browser tests with temporary users.
 - [x] Fresh subagent whole-branch security/correctness review; fix significant findings with regression tests.
-- [ ] Deploy API and Vercel frontend, verify READY/healthy and unauthenticated API rejection, activation/login, shared changes across users, deep links and mobile.
-- [ ] Leave a one-time manager activation link for the user; remove test accounts and test data; commit and provide live URL plus exact limitations.
+- [x] Deploy API and Vercel frontend, verify READY/healthy and unauthenticated API rejection, activation/login, shared changes across users, deep links and mobile.
+- [x] Leave a one-time manager activation link for the user; remove test accounts and test data; commit and provide live URL plus exact limitations.
