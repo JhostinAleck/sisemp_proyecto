@@ -37,3 +37,6 @@ Tests de dominio: reservas simultáneas y no coincidentes; doble reserva y fecha
 
 ## No incluido en esta iteración
 Integración Siigo, envíos a proveedores, sincronización en tiempo real con Sheets, autenticación de producción, multiusuario compartido, importación masiva automática o certificación de seguridad del equipo. El prototipo registra novedades; no certifica que un equipo sea seguro para un stunt.
+
+## Actualización aprobada por el usuario
+El usuario solicita acceso real y base compartida, elige Railway en lugar de Firestore y autoriza subagentes para implementar y desplegar rápidamente. Arquitectura definitiva: PostgreSQL y API Express en Railway; React/Vite en Vercel con proxy /api al backend; cookies HttpOnly y roles validados en servidor. Acceso por invitaciones de un solo uso, con activación del primer gerente mediante enlace privado. Usuarios, sesiones, invitaciones, límites de login y auditoría en tablas SQL; datos operativos en un agregado JSONB transaccional bloqueado con SELECT FOR UPDATE, apropiado para esta empresa/prototipo pequeño. No se utiliza localStorage como fuente de verdad. Las secciones anteriores sobre perfiles demo y persistencia local quedan reemplazadas. No se crean recursos Firebase.
