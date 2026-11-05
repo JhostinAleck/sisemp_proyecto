@@ -80,9 +80,8 @@ export async function createInvitation(input: InvitationInput): Promise<{url:str
 }
 
 // Reserve both counters before password work; concurrent attempts cannot bypass either limit.
-async function reserveLoginAttempt(email: string, ip: string): Promise<boolean> {
+async function reserveAttempts(counters: readonly (readonly [string,number])[]): Promise<boolean> {
   return transaction(async client => {
-    const counters = [[`email:${tokenDigest(email)}`,10], [`ip:${tokenDigest(ip)}`,50]] as const;
     let allowed = true;
     for (const [key,limit] of counters) {
       const result = await client.query<{attempts:number}>(`INSERT INTO auth_limits(key,attempts,expires_at) VALUES($1,1,now()+interval '15 minutes') ON CONFLICT(key) DO UPDATE SET attempts=CASE WHEN auth_limits.expires_at<=now() THEN 1 ELSE auth_limits.attempts+1 END,expires_at=CASE WHEN auth_limits.expires_at<=now() THEN now()+interval '15 minutes' ELSE auth_limits.expires_at END RETURNING attempts`,[key]);
@@ -114,7 +113,7 @@ authRouter.post('/login', async (req,res) => {
   const parsed = z.object({email:emailSchema,password:z.string().min(1).max(128)}).safeParse(req.body);
   if (!parsed.success) throw new HttpError(401,loginFailure);
   const {email,password} = parsed.data;
-  if (!await reserveLoginAttempt(email,req.ip ?? req.socket.remoteAddress ?? 'unknown')) throw new HttpError(429,loginFailure);
+  if (!await reserveAttempts([[`email:${tokenDigest(email)}`,10],[`ip:${tokenDigest(req.ip ?? req.socket.remoteAddress ?? 'unknown')}`,50]])) throw new HttpError(429,loginFailure);
   const record = (await pool.query<User & {password_hash:string}>(`SELECT ${userColumns},password_hash FROM users WHERE email=$1`,[email])).rows[0];
   const verified = await verifyPassword(password,record?.password_hash ?? dummyHash);
   if (!verified || !record?.active) throw new HttpError(401,loginFailure);
@@ -141,6 +140,11 @@ authRouter.get('/invitation', async (req,res) => {
 });
 authRouter.post('/activate', async (req,res) => {
   const {token,name,password} = z.object({token:tokenSchema,name:z.string().trim().min(1).max(120),password:passwordSchema}).strict().parse(req.body);
+  const ip = req.ip ?? req.socket.remoteAddress ?? 'unknown';
+  if (!await reserveAttempts([[`activate:ip:${tokenDigest(ip)}`,10]])) throw new HttpError(429,'Demasiados intentos de activación. Inténtalo más tarde.');
+  // Reject arbitrary bearer tokens before any expensive password work. The transaction rechecks expiry/use below.
+  const preflight = (await pool.query('SELECT expires_at,used_at FROM invitations WHERE token_hash=$1',[tokenDigest(token)])).rows[0];
+  assertLiveToken(preflight);
   const passwordHash = await hashPassword(password);
   const result = await transaction(async client => {
     await client.query('SELECT pg_advisory_xact_lock(84537012)');
@@ -157,6 +161,9 @@ authRouter.post('/activate', async (req,res) => {
 });
 authRouter.post('/password', requireUser, async (req,res) => {
   const {currentPassword,newPassword:nextPassword} = z.object({currentPassword:z.string().min(1).max(128),newPassword:passwordSchema}).strict().parse(req.body);
+  const actor = (res.locals.user as User).id;
+  const ip = req.ip ?? req.socket.remoteAddress ?? 'unknown';
+  if (!await reserveAttempts([[`password:user:${actor}`,10],[`password:ip:${tokenDigest(ip)}`,30]])) throw new HttpError(429,'Demasiados intentos de contraseña. Inténtalo más tarde.');
   const passwordHash = await hashPassword(nextPassword);
   const result = await transaction(async client => {
     const user = (await client.query<User & {password_hash:string}>(`SELECT ${userColumns},password_hash FROM users WHERE id=$1 FOR UPDATE`,[(res.locals.user as User).id])).rows[0];

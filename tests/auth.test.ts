@@ -133,6 +133,16 @@ test('PostgreSQL auth enforces invitation, revocation, authorization and login l
     const attempts = await Promise.all(Array.from({length:12}, () => request('/login',{email:'nobody@example.com',password:'incorrect-password'})));
     assert.equal(attempts.filter(r=>r.status===401).length, 10);
     assert.equal(attempts.filter(r=>r.status===429).length, 2);
+    await pool.query("DELETE FROM auth_limits WHERE key LIKE 'activate:%'");
+    const activationAbuse = await Promise.all(Array.from({length:11}, () => request('/activate',{token:newToken(),name:'Invalid',password:'attacker-password-123'})));
+    assert.equal(activationAbuse.filter(r=>r.status===400).length,10);
+    assert.equal(activationAbuse.filter(r=>r.status===429).length,1);
+    const relogin = await request('/login',{email:'manager@example.com',password:'manager-password-456'});
+    assert.equal(relogin.status,200);
+    await pool.query("DELETE FROM auth_limits WHERE key LIKE 'password:%'");
+    const passwordAbuse = await Promise.all(Array.from({length:11}, () => request('/password',{currentPassword:'incorrect-password',newPassword:'attacker-password-123'},relogin.cookie)));
+    assert.equal(passwordAbuse.filter(r=>r.status===400).length,10);
+    assert.equal(passwordAbuse.filter(r=>r.status===429).length,1);
     const raw = await pool.query('SELECT token_hash FROM sessions UNION ALL SELECT token_hash FROM invitations');
     assert.equal(raw.rows.every(row => /^[a-f0-9]{64}$/.test(row.token_hash)), true);
     t.diagnostic('Real PostgreSQL and HTTP: single-use invite race, latest role/active, expiry, password revocation and parallel SQL rate limits verified.');
