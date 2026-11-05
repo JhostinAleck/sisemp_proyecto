@@ -39,6 +39,21 @@ El dominio público de la API apunta al puerto 3000. PostgreSQL no tiene proxy T
 No copiar `DATABASE_URL` al frontend ni crear una variable `VITE_` con credenciales.
 El frontend no necesita secretos: `vercel.json` define el destino de `/api`.
 
+## Primera cuenta de gerencia
+
+Antes del primer arranque, configurar en la API `BOOTSTRAP_INVITE_TOKEN`,
+`BOOTSTRAP_MANAGER_EMAIL` y `BOOTSTRAP_MANAGER_NAME`. El token debe ser generado
+con aleatoriedad criptográfica (32 bytes codificados como base64url, 43 caracteres).
+Introducir los valores mediante stdin o el gestor de variables de Railway, sin imprimirlos
+en logs ni almacenarlos en el repositorio.
+
+Al arrancar con una base nueva, la API crea una invitación de gerencia válida durante siete
+días y guarda solamente el hash del token. Los reinicios no reemplazan ni reactivan una
+invitación inicial existente. La persona destinataria abre privadamente
+`https://burning-bull-sisemp-jhostin.vercel.app/activar#token=<token>` y elige su nombre
+y contraseña. Después de activar la cuenta, gerencia administra las invitaciones desde la aplicación.
+Retirar las tres variables de bootstrap cuando la cuenta esté activada.
+
 ## Verificar y desplegar
 
 Requiere Node.js 22.12 o superior, las dependencias del lockfile y una sesión del CLI de Railway
