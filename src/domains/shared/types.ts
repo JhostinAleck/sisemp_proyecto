@@ -159,11 +159,26 @@ export interface AuditEvent {
   summary: string;
   createdAt: string;
 }
+export interface HistoricalDispatch {
+  row: number;
+  itemCode: string;
+  itemName: string;
+  responsible: string;
+  dispatchedQty: number;
+  dispatchedOn: string;
+  returnedQty: number | null;
+  returnedOn: string | null;
+}
+export interface DispatchHistory {
+  sourceUrl: string;
+  entries: HistoricalDispatch[];
+}
 export interface Workspace {
   inventory: InventoryItem[];
   projects: Project[];
   reservations: Reservation[];
   dispatches: Dispatch[];
+  dispatchHistory?: DispatchHistory;
   movements: Movement[];
   suppliers: Supplier[];
   offers: Offer[];

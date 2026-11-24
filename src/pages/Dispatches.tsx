@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { useStore } from "../app/store";
 import { can } from "../domains/access/policy";
 import { dateRange, shortDate } from "../domains/shared/format";
-import type { Dispatch } from "../domains/shared/types";
+import type { Dispatch, DispatchHistory } from "../domains/shared/types";
 import {
   Back,
   Badge,
@@ -228,6 +228,49 @@ function ReturnForm({
     </Modal>
   );
 }
+function HistoricalDispatches({ history }: { history: DispatchHistory }) {
+  return (
+    <section className="panel" aria-labelledby="dispatch-history">
+      <div className="panel-head">
+        <div>
+          <h2 id="dispatch-history">Historial de bodega</h2>
+          <p>Salidas y devoluciones registradas en el inventario STUNTS.</p>
+        </div>
+        <a href={history.sourceUrl} target="_blank" rel="noreferrer">
+          Consultar registro original
+        </a>
+      </div>
+      <Table>
+        <thead>
+          <tr>
+            <th>Equipo</th>
+            <th>Responsable / proyecto</th>
+            <th>Fecha de salida</th>
+            <th>Entregadas</th>
+            <th>Devueltas</th>
+            <th>Fecha de retorno</th>
+          </tr>
+        </thead>
+        <tbody>
+          {history.entries.map((entry) => (
+            <tr key={entry.row}>
+              <td>
+                <span className="item-name">{entry.itemName}</span>
+                <small className="mono">{entry.itemCode}</small>
+              </td>
+              <td>{entry.responsible}</td>
+              <td>{shortDate(entry.dispatchedOn)}</td>
+              <td>{entry.dispatchedQty}</td>
+              <td>{entry.returnedQty ?? "Sin registro"}</td>
+              <td>{entry.returnedOn ? shortDate(entry.returnedOn) : "Sin registro"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+    </section>
+  );
+}
+
 export function Dispatches() {
   const { state, user } = useStore(),
     [create, setCreate] = useState(false),
@@ -349,6 +392,9 @@ export function Dispatches() {
           />
         )}
       </section>
+      {!!state.dispatchHistory?.entries.length && (
+        <HistoricalDispatches history={state.dispatchHistory} />
+      )}
       {create && <DispatchForm close={() => setCreate(false)} />}
       {returnDispatch && (
         <ReturnForm
