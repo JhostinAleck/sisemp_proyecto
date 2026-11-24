@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useStore } from "../app/store";
 import { can } from "../domains/access/policy";
-import { dateRange, shortDate } from "../domains/shared/format";
+import { businessDate, dateRange, shortDate } from "../domains/shared/format";
 import type { Dispatch, DispatchHistory } from "../domains/shared/types";
 import {
   Back,
@@ -234,7 +234,12 @@ function HistoricalDispatches({ history }: { history: DispatchHistory }) {
       <div className="panel-head">
         <div>
           <h2 id="dispatch-history">Historial de bodega</h2>
-          <p>Salidas y devoluciones registradas en el inventario STUNTS.</p>
+          <p>
+            Salidas y devoluciones registradas en el inventario STUNTS.
+            {history.importedAt && (
+              <> Incorporadas el {shortDate(businessDate(history.importedAt))}.</>
+            )}
+          </p>
         </div>
         <a href={history.sourceUrl} target="_blank" rel="noreferrer">
           Consultar registro original
@@ -275,11 +280,13 @@ export function Dispatches() {
   const { state, user } = useStore(),
     [create, setCreate] = useState(false),
     [returning, setReturning] = useState<string | null>(null),
-    [filter, setFilter] = useState("pending");
+    [filter, setFilter] = useState<"pending" | "all" | null>(null);
+  const pendingDispatches = state.dispatches.filter((d) =>
+    d.lines.some((l) => l.qty > l.returnedQty),
+  );
+  const selectedFilter = filter ?? (pendingDispatches.length ? "pending" : "all");
   const allowed = !!user && can(user.role, "inventory.move"),
-    dispatches = state.dispatches.filter(
-      (d) => filter !== "pending" || d.lines.some((l) => l.qty > l.returnedQty),
-    );
+    dispatches = selectedFilter === "pending" ? pendingDispatches : state.dispatches;
   const returnDispatch = state.dispatches.find((d) => d.id === returning);
   return (
     <>
@@ -295,20 +302,14 @@ export function Dispatches() {
       </PageHead>
       <div className="tabs">
         <button
-          className={filter === "pending" ? "active" : ""}
+          className={selectedFilter === "pending" ? "active" : ""}
           onClick={() => setFilter("pending")}
         >
           Retornos pendientes{" "}
-          <Badge>
-            {
-              state.dispatches.filter((d) =>
-                d.lines.some((l) => l.qty > l.returnedQty),
-              ).length
-            }
-          </Badge>
+          <Badge>{pendingDispatches.length}</Badge>
         </button>
         <button
-          className={filter === "all" ? "active" : ""}
+          className={selectedFilter === "all" ? "active" : ""}
           onClick={() => setFilter("all")}
         >
           Todas las actas
@@ -323,17 +324,23 @@ export function Dispatches() {
                 <th>Responsable</th>
                 <th>Fecha de salida</th>
                 <th>Retorno previsto</th>
+                <th>Último retorno</th>
                 <th>Pendiente</th>
                 <th>Acciones</th>
               </tr>
             </thead>
             <tbody>
-              {[...dispatches].reverse().map((d) => {
+              {[...dispatches].sort((a, b) => b.date.localeCompare(a.date)).map((d) => {
                 const pending = d.lines.reduce(
                     (n, l) => n + l.qty - l.returnedQty,
                     0,
                   ),
                   overdue = d.dueDate < today() && pending > 0;
+                const lastReturn = state.movements
+                  .filter((m) => m.dispatchId === d.id && m.kind === "retorno")
+                  .map((m) => m.date)
+                  .sort()
+                  .at(-1);
                 return (
                   <tr key={d.id}>
                     <td>
@@ -345,13 +352,14 @@ export function Dispatches() {
                       </small>
                     </td>
                     <td>{d.responsible}</td>
-                    <td>{shortDate(d.date)}</td>
+                    <td>{shortDate(businessDate(d.date))}</td>
                     <td>
                       {shortDate(d.dueDate)}
                       {overdue && (
                         <small className="danger-text">Retorno vencido</small>
                       )}
                     </td>
+                    <td>{lastReturn ? shortDate(businessDate(lastReturn)) : "—"}</td>
                     <td>
                       <Badge tone={pending ? "amber" : "green"}>
                         {pending ? `${pending} unidades` : "Completo"}
@@ -384,7 +392,7 @@ export function Dispatches() {
         ) : (
           <Empty
             title={
-              filter === "pending"
+              selectedFilter === "pending"
                 ? "Sin retornos pendientes"
                 : "Aún no hay actas de salida"
             }

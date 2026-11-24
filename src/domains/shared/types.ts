@@ -171,6 +171,7 @@ export interface HistoricalDispatch {
 }
 export interface DispatchHistory {
   sourceUrl: string;
+  importedAt?: string;
   entries: HistoricalDispatch[];
 }
 export interface Workspace {
