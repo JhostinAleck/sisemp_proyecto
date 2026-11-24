@@ -75,17 +75,6 @@ export function Layout() {
           )}
         </nav>
         <div className="sidebar-foot">
-          <div className="sample-note">
-            <Icon name="info" />
-            <span>
-              Catálogo de muestra
-              <small>
-                Basado en inventario STUNTS.
-                <br />
-                Sin sincronización con Sheets.
-              </small>
-            </span>
-          </div>
           <NavLink className="user-card" to="/cuenta">
             <span className="avatar">
               {user.name.slice(0, 2).toUpperCase()}
