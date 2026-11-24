@@ -5,6 +5,7 @@ import { Layout } from './components/Layout';
 import { StoreProvider } from './data/store';
 import { Comparador } from './pages/Comparador';
 import { Desglose } from './pages/Desglose';
+import { Executive } from './pages/Executive';
 import { InventoryCheck } from './pages/InventoryCheck';
 import { ItemDetail } from './pages/ItemDetail';
 import { InventoryList, Quotes, Suppliers } from './pages/Lists';
@@ -30,6 +31,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path="inventario/:itemId" element={<ItemDetail />} />
             <Route path="proveedores" element={<Suppliers />} />
             <Route path="cotizaciones" element={<Quotes />} />
+            <Route path="gerencia" element={<Executive />} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>

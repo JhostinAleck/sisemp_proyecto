@@ -32,6 +32,14 @@ export function Layout() {
           <div className="nav-logo"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#111113" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3c1 3 4 5 4 9a4 4 0 0 1-8 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-5 0-8z" /></svg></div>
           <div><b>Boom</b><small>Cotizador</small></div>
         </div>
+        {user.role === 'gerencia' && (
+          <div className="nav-group">
+            <span className="nav-label">Dirección</span>
+            <NavLink to="/gerencia" className={({ isActive }) => (isActive ? 'active' : '')}>
+              <Icon name="chart" size={18} stroke={1.75} />Tablero ejecutivo
+            </NavLink>
+          </div>
+        )}
         <div className="nav-group">
           <span className="nav-label">Operación</span>
           {LINKS.map(l => (
