@@ -26,6 +26,7 @@ const P: Record<string, ReactNode> = {
   out: <path d="M7 17L17 7M9 7h8v8" />,
   in: <path d="M17 7L7 17M15 17H7V9" />,
   wrench: <path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L4 16.8V20h3.2l5.3-5.3a4 4 0 0 0 5.2-5.4l-2.5 2.5-2.3-.6-.6-2.3z" />,
+  chart: <><path d="M4 20h16" /><path d="M7 16v-5M12 16V6M17 16v-8" /></>,
   bookmark: <path d="M6 3h12v18l-6-4-6 4z" />,
 };
 
